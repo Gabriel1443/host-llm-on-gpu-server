@@ -16,7 +16,11 @@ models/
 # Env / secrets
 .env
 .env.*
+!.env.example
 *.key
+
+# Local config (use config.json.example as the template)
+config.json
 
 # Logs & caches
 *.log

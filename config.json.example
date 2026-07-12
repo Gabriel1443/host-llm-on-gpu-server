@@ -1,0 +1,9 @@
+{
+  "vast": {
+    "gpu": "RTX 4090",
+    "max_price": 0.5,
+    "disk_gb": 40
+  },
+  "model": "qwen2.5-coder",
+  "ollama_port": 11434
+}

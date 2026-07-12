@@ -29,8 +29,18 @@ config.json  ──►  vast.ai API rents a GPU server
 The vast.ai **API key is read from an environment variable / `.env`** — it is
 never stored in `config.json` and never committed.
 
+## Setup
+
+This project uses **[uv](https://docs.astral.dev/uv/)** for Python.
+
 ```bash
-export VAST_API_KEY=...
+uv sync                        # create .venv (Python >=3.11)
+cp config.json.example config.json   # then edit
+cp .env.example .env                 # then add your VAST_API_KEY
+source .env                          # or export VAST_API_KEY=...
+
+uv run python config.py        # sanity-check the config loads
+uv run python -m unittest discover -s tests
 ```
 
 ## Usage

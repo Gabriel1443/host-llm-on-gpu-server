@@ -3,6 +3,11 @@
 Guidance for agents working in this repo. See [README.md](README.md) for the
 project goal, architecture, and `config.json` shape.
 
+## Tooling
+- Python is managed with **uv**. Use `uv run ...` (e.g. `uv run python -m unittest
+  discover -s tests`), `uv add <pkg>` for deps, `uv sync` to set up. Don't call a
+  bare `python`/`pip`. Requires Python >=3.11.
+
 ## Key constraints (read before coding)
 - **Provider is vast.ai, fixed** — do not build a provider abstraction.
 - **Model is config-driven** via `config.json` (e.g. `qwen2.5-coder`) — never hardcode it.
