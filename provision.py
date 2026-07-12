@@ -1,12 +1,15 @@
 """Rent a vast.ai GPU instance matching config.json and print how to reach it.
 
 Usage:
-    uv run python provision.py [--config config.json] [--timeout 600]
+    uv run python provision.py [--config config.json] [--timeout 600] [--force]
 
 Reads config.json (see config.py) for GPU filters, disk size, the Ollama
 port to expose, and which model to host: search offers -> create instance
 (onstart starts `ollama serve` and pulls the configured model) -> poll until
 running -> print instance id + reachable host:port.
+
+Refuses to run if local state (see state.py) already tracks an instance,
+to avoid silently orphaning it — run teardown.py first, or pass --force.
 """
 
 from __future__ import annotations
@@ -110,7 +113,14 @@ def build_onstart_script(model: str, port: int) -> str:
     )
 
 
-def provision(cfg: Config, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS) -> None:
+def provision(cfg: Config, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS, force: bool = False) -> None:
+    existing = state.load()
+    if existing is not None and not force:
+        raise ProvisionError(
+            f"local state already tracks instance {existing.instance_id} "
+            f"(run teardown.py first, or pass --force if you know it's already gone)"
+        )
+
     client = VastClient(cfg.api_key)
 
     offer = pick_offer(client, cfg)
@@ -145,11 +155,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS, help="seconds to wait for boot"
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="provision even if local state already tracks an instance",
+    )
     args = parser.parse_args(argv)
 
     try:
         cfg = load_config(args.config)
-        provision(cfg, timeout_seconds=args.timeout)
+        provision(cfg, timeout_seconds=args.timeout, force=args.force)
     except (ConfigError, ProvisionError, VastAPIError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

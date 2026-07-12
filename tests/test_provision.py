@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import state as state_module  # noqa: E402
 from config import Config, VastConfig  # noqa: E402
 from provision import (  # noqa: E402
     ProvisionError,
@@ -139,15 +140,19 @@ class BuildOnstartScriptTests(unittest.TestCase):
 
 
 class ProvisionEndToEndTests(unittest.TestCase):
-    def _run(self, **config_overrides):
+    def _run(self, *, force=False, **config_overrides):
         client = MagicMock()
         client.search_offers.return_value = [Offer(1, "RTX_4090", 0.3, 100)]
         client.create_instance.return_value = 555
         client.get_instance.return_value = Instance(
             555, "running", {"11434/tcp": [{"HostIp": "0.0.0.0", "HostPort": "1"}]}, "1.2.3.4"
         )
-        with patch("provision.VastClient", return_value=client), patch("provision.state.save") as mock_save:
-            provision(make_config(**config_overrides), timeout_seconds=5)
+        with (
+            patch("provision.VastClient", return_value=client),
+            patch("provision.state.save") as mock_save,
+            patch("provision.state.load", return_value=None),
+        ):
+            provision(make_config(**config_overrides), timeout_seconds=5, force=force)
         return client, mock_save
 
     def test_onstart_includes_serve_and_pull_for_configured_model(self):
@@ -156,6 +161,32 @@ class ProvisionEndToEndTests(unittest.TestCase):
         onstart = client.create_instance.call_args.kwargs["onstart"]
         self.assertIn("ollama serve", onstart)
         self.assertIn("ollama pull qwen2.5-coder", onstart)
+
+    def test_refuses_when_state_already_tracks_an_instance(self):
+        client = MagicMock()
+        with (
+            patch("provision.VastClient", return_value=client),
+            patch("provision.state.load", return_value=state_module.InstanceState(1, "h", 1)),
+        ):
+            with self.assertRaises(ProvisionError) as cm:
+                provision(make_config(), timeout_seconds=5)
+        self.assertIn("already tracks instance 1", str(cm.exception))
+        client.search_offers.assert_not_called()
+
+    def test_force_bypasses_existing_state(self):
+        client = MagicMock()
+        client.search_offers.return_value = [Offer(1, "RTX_4090", 0.3, 100)]
+        client.create_instance.return_value = 555
+        client.get_instance.return_value = Instance(
+            555, "running", {"11434/tcp": [{"HostIp": "0.0.0.0", "HostPort": "1"}]}, "1.2.3.4"
+        )
+        with (
+            patch("provision.VastClient", return_value=client),
+            patch("provision.state.save"),
+            patch("provision.state.load", return_value=state_module.InstanceState(1, "h", 1)),
+        ):
+            provision(make_config(), timeout_seconds=5, force=True)
+        client.create_instance.assert_called_once()
 
     def test_saves_instance_state_for_teardown(self):
         _, mock_save = self._run()
