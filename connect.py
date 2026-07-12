@@ -64,6 +64,16 @@ def resolve_target(
     return host_port
 
 
+def model_is_pulled(configured_model: str, available_models: list[str]) -> bool:
+    """Ollama's /api/tags names are always tag-qualified (e.g. "x:latest"),
+    but config.json's model name usually isn't. Compare ignoring the tag.
+    """
+    return any(
+        configured_model == m or m.split(":")[0] == configured_model
+        for m in available_models
+    )
+
+
 def check_tags(host: str, port: int, *, timeout: int = REQUEST_TIMEOUT_SECONDS) -> list[str]:
     """GET /api/tags. Returns the list of model names available on the server."""
     url = f"http://{host}:{port}/api/tags"
@@ -93,7 +103,14 @@ def check_generate(
     return data["response"]
 
 
-def run_check(cfg: Config, *, instance_id: int | None, host: str | None, port: int | None) -> None:
+def run_check(
+    cfg: Config,
+    *,
+    instance_id: int | None,
+    host: str | None,
+    port: int | None,
+    prompt: str = DEFAULT_PROMPT,
+) -> None:
     if host is not None:
         target_port = port or cfg.ollama_port
         target = (host, target_port)
@@ -107,10 +124,10 @@ def run_check(cfg: Config, *, instance_id: int | None, host: str | None, port: i
     models = check_tags(target_host, target_port)
     print(f"/api/tags ok — models on server: {models or '(none pulled yet)'}")
 
-    if cfg.model not in models:
+    if not model_is_pulled(cfg.model, models):
         print(f"warning: configured model {cfg.model!r} not in server's model list yet")
 
-    response = check_generate(target_host, target_port, cfg.model, DEFAULT_PROMPT)
+    response = check_generate(target_host, target_port, cfg.model, prompt)
     print(f"/api/generate ok — response: {response.strip()[:200]!r}")
 
 
@@ -120,11 +137,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--instance-id", type=int, default=None, help="vast.ai instance id")
     parser.add_argument("--host", default=None, help="skip vast.ai lookup, connect here directly")
     parser.add_argument("--port", type=int, default=None, help="port to use with --host")
+    parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="prompt to send to /api/generate")
     args = parser.parse_args(argv)
 
     try:
         cfg = load_config(args.config)
-        run_check(cfg, instance_id=args.instance_id, host=args.host, port=args.port)
+        run_check(
+            cfg,
+            instance_id=args.instance_id,
+            host=args.host,
+            port=args.port,
+            prompt=args.prompt,
+        )
     except (ConfigError, ConnectError, VastAPIError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

@@ -12,6 +12,7 @@ from connect import (  # noqa: E402
     ConnectError,
     check_generate,
     check_tags,
+    model_is_pulled,
     resolve_target,
     run_check,
 )
@@ -78,6 +79,22 @@ class ResolveTargetTests(unittest.TestCase):
             resolve_target(client, 11434, instance_id=999)
 
 
+class ModelIsPulledTests(unittest.TestCase):
+    def test_matches_tag_qualified_name(self):
+        # Ollama's /api/tags always returns "name:tag"; config.json's model
+        # name usually omits the tag (e.g. "qwen2.5-coder" pulls :latest).
+        self.assertTrue(model_is_pulled("qwen2.5-coder", ["qwen2.5-coder:latest"]))
+
+    def test_matches_exact_name(self):
+        self.assertTrue(model_is_pulled("qwen2.5-coder:latest", ["qwen2.5-coder:latest"]))
+
+    def test_no_match(self):
+        self.assertFalse(model_is_pulled("qwen2.5-coder", ["llama3:latest"]))
+
+    def test_no_match_on_empty_list(self):
+        self.assertFalse(model_is_pulled("qwen2.5-coder", []))
+
+
 class CheckTagsTests(unittest.TestCase):
     @patch("connect.requests.get")
     def test_returns_model_names(self, mock_get):
@@ -131,6 +148,26 @@ class RunCheckTests(unittest.TestCase):
         mock_generate.return_value = "OK"
         run_check(make_config(ollama_port=11434), instance_id=None, host="5.5.5.5", port=None)
         mock_tags.assert_called_once_with("5.5.5.5", 11434)
+
+    @patch("connect.check_generate")
+    @patch("connect.check_tags")
+    def test_custom_prompt_is_passed_to_generate(self, mock_tags, mock_generate):
+        mock_tags.return_value = []
+        mock_generate.return_value = "OK"
+        run_check(make_config(), instance_id=None, host="5.5.5.5", port=9999, prompt="custom prompt")
+        mock_generate.assert_called_once_with("5.5.5.5", 9999, "qwen2.5-coder", "custom prompt")
+
+    @patch("connect.check_generate")
+    @patch("connect.check_tags")
+    def test_no_false_warning_when_model_pulled_with_tag(self, mock_tags, mock_generate):
+        # config.json's "qwen2.5-coder" vs. Ollama's tag-qualified
+        # "qwen2.5-coder:latest" must not trigger the "not pulled yet" warning.
+        mock_tags.return_value = ["qwen2.5-coder:latest"]
+        mock_generate.return_value = "OK"
+        with patch("builtins.print") as mock_print:
+            run_check(make_config(), instance_id=None, host="5.5.5.5", port=9999)
+        warnings = [c for c in mock_print.call_args_list if "not in server's model list" in str(c)]
+        self.assertEqual(warnings, [])
 
 
 if __name__ == "__main__":

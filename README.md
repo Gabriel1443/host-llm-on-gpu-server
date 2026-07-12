@@ -45,29 +45,56 @@ never stored in `config.json` and never committed.
 This project uses **[uv](https://docs.astral.dev/uv/)** for Python.
 
 ```bash
-uv sync                        # create .venv (Python >=3.11)
+uv sync                              # create .venv (Python >=3.11)
 cp config.json.example config.json   # then edit
 cp .env.example .env                 # then add your VAST_API_KEY
 source .env                          # or export VAST_API_KEY=...
-
-uv run python config.py        # sanity-check the config loads
-uv run python -m unittest discover -s tests
 ```
 
 ## Usage
 
-> Scripts are being built — see the [open issues](https://github.com/Gabriel1443/host-llm-on-gpu-server/issues).
-> The intended workflow:
+### 1. Rent a server and start Ollama
 
 ```bash
-# 1. rent a GPU server matching config.json and start Ollama
-#    (provisioning script)
+uv run python provision.py
+```
 
-# 2. connect from local
-curl http://<host>:<port>/api/tags
+Searches vast.ai for an offer matching `config.json`, rents the cheapest
+match, and boots it running `ollama serve` plus `ollama pull <model>`. Prints
+the instance id and the `http://<host>:<port>` to connect to. The instance id
+is also saved locally (`.vast_state.json`) so `teardown.py` doesn't need it
+passed in manually.
 
-# 3. destroy the instance to stop billing
-#    (teardown script)
+The model may still be downloading when this command returns — larger models
+take a while to pull.
+
+### 2. Verify it's reachable
+
+```bash
+uv run python connect.py
+```
+
+Finds the sole running vast.ai instance with the configured port mapped (or
+use `--instance-id` if you have more than one), then checks `GET /api/tags`
+(lists models) and `POST /api/generate` (asks the model to respond). Re-run
+this if you provisioned recently and want to confirm the model finished
+downloading.
+
+### 3. Destroy the instance when done
+
+```bash
+uv run python teardown.py
+```
+
+**Do this every time you're done** — rented GPUs bill by the hour. Destroys
+the instance tracked in local state (prompts for confirmation; pass `--yes`
+to skip it, or `--instance-id` to target a different instance). Safe to run
+with nothing to destroy.
+
+### Running the tests
+
+```bash
+uv run python -m unittest discover -s tests
 ```
 
 ## Roles
