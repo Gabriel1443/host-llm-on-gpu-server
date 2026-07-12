@@ -2,12 +2,13 @@
 
 Reads a JSON config (default: ``config.json``) describing which GPU to rent on
 vast.ai and which Ollama model to host, and pulls the vast.ai API key from the
-environment (never from the config file).
+environment (never from the config file). A local ``.env`` file, if present,
+is loaded automatically — no need to ``source`` it yourself.
 
 Usage::
 
     from config import load_config
-    cfg = load_config()          # reads ./config.json + VAST_API_KEY env
+    cfg = load_config()          # reads ./config.json + .env / VAST_API_KEY env
     print(cfg.model, cfg.api_key)
 """
 
@@ -17,6 +18,8 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 DEFAULT_CONFIG_PATH = "config.json"
 API_KEY_ENV = "VAST_API_KEY"
@@ -83,14 +86,18 @@ def load_config(
 
     Args:
         path: Path to the JSON config file.
-        env: Environment mapping to read the API key from (defaults to os.environ).
-             Injectable for testing.
+        env: Environment mapping to read the API key from (defaults to
+             os.environ, after loading a local .env file into it if one
+             exists). Injectable for testing — .env is not consulted when
+             this is given explicitly.
 
     Raises:
         ConfigError: on a missing file, invalid JSON, bad/missing fields, or a
             missing ``VAST_API_KEY`` in the environment.
     """
-    env = os.environ if env is None else env
+    if env is None:
+        load_dotenv()  # populates os.environ from ./.env; never overrides an already-set var
+        env = os.environ
 
     config_path = Path(path)
     try:

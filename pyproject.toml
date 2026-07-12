@@ -5,6 +5,7 @@ description = "Rent a GPU server on vast.ai and host an Ollama model, reachable 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "python-dotenv>=1.2.2",
     "requests>=2.34.2",
 ]
 
