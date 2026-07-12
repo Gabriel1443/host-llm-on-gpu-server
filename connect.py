@@ -64,6 +64,16 @@ def resolve_target(
     return host_port
 
 
+def model_is_pulled(configured_model: str, available_models: list[str]) -> bool:
+    """Ollama's /api/tags names are always tag-qualified (e.g. "x:latest"),
+    but config.json's model name usually isn't. Compare ignoring the tag.
+    """
+    return any(
+        configured_model == m or m.split(":")[0] == configured_model
+        for m in available_models
+    )
+
+
 def check_tags(host: str, port: int, *, timeout: int = REQUEST_TIMEOUT_SECONDS) -> list[str]:
     """GET /api/tags. Returns the list of model names available on the server."""
     url = f"http://{host}:{port}/api/tags"
@@ -114,7 +124,7 @@ def run_check(
     models = check_tags(target_host, target_port)
     print(f"/api/tags ok — models on server: {models or '(none pulled yet)'}")
 
-    if cfg.model not in models:
+    if not model_is_pulled(cfg.model, models):
         print(f"warning: configured model {cfg.model!r} not in server's model list yet")
 
     response = check_generate(target_host, target_port, cfg.model, prompt)
