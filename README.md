@@ -74,10 +74,11 @@ take a while to pull.
 uv run python connect.py
 ```
 
-Resolves the rented instance (from local state, or `--instance-id`) and
-checks `GET /api/tags` (lists models) and `POST /api/generate` (asks the
-model to respond). Re-run this if you provisioned recently and want to
-confirm the model finished downloading.
+Finds the sole running vast.ai instance with the configured port mapped (or
+use `--instance-id` if you have more than one), then checks `GET /api/tags`
+(lists models) and `POST /api/generate` (asks the model to respond). Re-run
+this if you provisioned recently and want to confirm the model finished
+downloading.
 
 ### 3. Destroy the instance when done
 
