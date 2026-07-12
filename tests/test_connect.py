@@ -132,6 +132,14 @@ class RunCheckTests(unittest.TestCase):
         run_check(make_config(ollama_port=11434), instance_id=None, host="5.5.5.5", port=None)
         mock_tags.assert_called_once_with("5.5.5.5", 11434)
 
+    @patch("connect.check_generate")
+    @patch("connect.check_tags")
+    def test_custom_prompt_is_passed_to_generate(self, mock_tags, mock_generate):
+        mock_tags.return_value = []
+        mock_generate.return_value = "OK"
+        run_check(make_config(), instance_id=None, host="5.5.5.5", port=9999, prompt="custom prompt")
+        mock_generate.assert_called_once_with("5.5.5.5", 9999, "qwen2.5-coder", "custom prompt")
+
 
 if __name__ == "__main__":
     unittest.main()

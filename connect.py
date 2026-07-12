@@ -93,7 +93,14 @@ def check_generate(
     return data["response"]
 
 
-def run_check(cfg: Config, *, instance_id: int | None, host: str | None, port: int | None) -> None:
+def run_check(
+    cfg: Config,
+    *,
+    instance_id: int | None,
+    host: str | None,
+    port: int | None,
+    prompt: str = DEFAULT_PROMPT,
+) -> None:
     if host is not None:
         target_port = port or cfg.ollama_port
         target = (host, target_port)
@@ -110,7 +117,7 @@ def run_check(cfg: Config, *, instance_id: int | None, host: str | None, port: i
     if cfg.model not in models:
         print(f"warning: configured model {cfg.model!r} not in server's model list yet")
 
-    response = check_generate(target_host, target_port, cfg.model, DEFAULT_PROMPT)
+    response = check_generate(target_host, target_port, cfg.model, prompt)
     print(f"/api/generate ok — response: {response.strip()[:200]!r}")
 
 
@@ -120,11 +127,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--instance-id", type=int, default=None, help="vast.ai instance id")
     parser.add_argument("--host", default=None, help="skip vast.ai lookup, connect here directly")
     parser.add_argument("--port", type=int, default=None, help="port to use with --host")
+    parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="prompt to send to /api/generate")
     args = parser.parse_args(argv)
 
     try:
         cfg = load_config(args.config)
-        run_check(cfg, instance_id=args.instance_id, host=args.host, port=args.port)
+        run_check(
+            cfg,
+            instance_id=args.instance_id,
+            host=args.host,
+            port=args.port,
+            prompt=args.prompt,
+        )
     except (ConfigError, ConnectError, VastAPIError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
