@@ -48,8 +48,14 @@ This project uses **[uv](https://docs.astral.dev/uv/)** for Python.
 uv sync                              # create .venv (Python >=3.11)
 cp config.json.example config.json   # then edit
 cp .env.example .env                 # then add your VAST_API_KEY
-source .env                          # or export VAST_API_KEY=...
+set -a; source .env; set +a          # or export VAST_API_KEY=...
 ```
+
+`.env` uses plain `VAR=value` lines (no `export`), so a bare `source .env`
+only sets the variable in your current shell — it won't be visible to the
+`uv run python ...` subprocess. `set -a` before sourcing marks every
+variable it loads for export, which is what makes it reach the subprocess.
+You need to do this in every new terminal session.
 
 ## Usage
 
