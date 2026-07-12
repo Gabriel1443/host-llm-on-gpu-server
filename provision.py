@@ -84,18 +84,27 @@ def extract_host_port(instance: Instance, container_port: int) -> tuple[str, int
     return host, int(host_port)
 
 
-def build_onstart_script(model: str) -> str:
+def build_onstart_script(model: str, port: int) -> str:
     """Shell script: start `ollama serve`, wait for it to be ready, pull `model`.
 
     Runs serve in the background and polls the CLI until it responds, rather
     than a fixed sleep, since boot/model-download time varies by instance.
     `wait` at the end keeps the container alive on the serve process.
+
+    `ollama serve` needs OLLAMA_HOST=0.0.0.0:{port} (set in the instance env,
+    see vast_client.create_instance) to bind on all interfaces so the exposed
+    port is reachable. But the `ollama` CLI also reads OLLAMA_HOST to know
+    where to *connect*, and dialing 0.0.0.0 as a client target is invalid —
+    so the readiness check and pull below override it to 127.0.0.1 for
+    those two calls only. Without this the readiness loop never succeeds
+    and spins forever, leaving a billed instance running with no model.
     """
     quoted_model = shlex.quote(model)
+    local = f"OLLAMA_HOST=127.0.0.1:{port}"
     return (
         "ollama serve & "
-        "until ollama list >/dev/null 2>&1; do sleep 1; done; "
-        f"ollama pull {quoted_model}; "
+        f"until {local} ollama list >/dev/null 2>&1; do sleep 1; done; "
+        f"{local} ollama pull {quoted_model}; "
         "wait"
     )
 
@@ -114,7 +123,7 @@ def provision(cfg: Config, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS) ->
         image=OLLAMA_IMAGE,
         disk_gb=cfg.vast.disk_gb,
         port=cfg.ollama_port,
-        onstart=build_onstart_script(cfg.model),
+        onstart=build_onstart_script(cfg.model, cfg.ollama_port),
     )
     print(f"instance {instance_id} created, waiting for Ollama to serve and pull {cfg.model!r}...")
 

@@ -112,17 +112,30 @@ class WaitUntilRunningTests(unittest.TestCase):
 
 class BuildOnstartScriptTests(unittest.TestCase):
     def test_serves_waits_then_pulls_model(self):
-        script = build_onstart_script("qwen2.5-coder")
+        script = build_onstart_script("qwen2.5-coder", 11434)
         self.assertIn("ollama serve &", script)
         self.assertIn("ollama pull qwen2.5-coder", script)
         # pull must come after the wait-for-ready loop, not race against boot.
-        self.assertLess(script.index("until ollama list"), script.index("ollama pull"))
+        self.assertLess(script.index("until"), script.index("ollama pull"))
         self.assertTrue(script.rstrip().endswith("wait"))
 
     def test_shell_metacharacters_in_model_are_quoted(self):
-        script = build_onstart_script("model; rm -rf /")
+        script = build_onstart_script("model; rm -rf /", 11434)
         self.assertIn(shlex.quote("model; rm -rf /"), script)
         self.assertNotIn("pull model; rm -rf /;", script)
+
+    def test_cli_calls_target_localhost_not_bind_address(self):
+        # ollama serve must bind 0.0.0.0 (set via instance env), but the CLI
+        # calls it makes (list/pull) must target 127.0.0.1 explicitly, since
+        # dialing 0.0.0.0 as a client destination is invalid and would hang
+        # the readiness loop forever.
+        script = build_onstart_script("qwen2.5-coder", 11434)
+        self.assertIn("OLLAMA_HOST=127.0.0.1:11434 ollama list", script)
+        self.assertIn("OLLAMA_HOST=127.0.0.1:11434 ollama pull", script)
+
+    def test_uses_configured_port(self):
+        script = build_onstart_script("qwen2.5-coder", 22222)
+        self.assertIn("OLLAMA_HOST=127.0.0.1:22222", script)
 
 
 class ProvisionEndToEndTests(unittest.TestCase):
