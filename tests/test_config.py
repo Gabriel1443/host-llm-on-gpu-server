@@ -60,6 +60,38 @@ class LoadConfigTests(unittest.TestCase):
         cfg = load_config(self._write(data), env=ENV)
         self.assertEqual(cfg.ollama_port, DEFAULT_OLLAMA_PORT)
 
+    def test_verified_defaults_true_when_omitted(self):
+        cfg = load_config(self._write(VALID), env=ENV)
+        self.assertTrue(cfg.vast.verified)
+
+    def test_verified_can_be_set_false(self):
+        data = json.loads(json.dumps(VALID))
+        data["vast"]["verified"] = False
+        cfg = load_config(self._write(data), env=ENV)
+        self.assertFalse(cfg.vast.verified)
+
+    def test_verified_wrong_type_rejected(self):
+        data = json.loads(json.dumps(VALID))
+        data["vast"]["verified"] = "yes"
+        with self.assertRaises(ConfigError):
+            load_config(self._write(data), env=ENV)
+
+    def test_min_cpu_cores_defaults_none_when_omitted(self):
+        cfg = load_config(self._write(VALID), env=ENV)
+        self.assertIsNone(cfg.vast.min_cpu_cores)
+
+    def test_min_cpu_cores_can_be_set(self):
+        data = json.loads(json.dumps(VALID))
+        data["vast"]["min_cpu_cores"] = 2
+        cfg = load_config(self._write(data), env=ENV)
+        self.assertEqual(cfg.vast.min_cpu_cores, 2.0)
+
+    def test_min_cpu_cores_non_positive_rejected(self):
+        data = json.loads(json.dumps(VALID))
+        data["vast"]["min_cpu_cores"] = 0
+        with self.assertRaises(ConfigError):
+            load_config(self._write(data), env=ENV)
+
     def test_missing_file(self):
         with self.assertRaises(ConfigError) as cm:
             load_config("/no/such/config.json", env=ENV)

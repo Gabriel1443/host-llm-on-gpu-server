@@ -20,11 +20,22 @@ config.json  ──►  vast.ai API rents a GPU server
 
 ```jsonc
 {
-  "vast":  { "gpu": "RTX 4090", "max_price": 0.5, "disk_gb": 40 },
+  "vast": {
+    "gpu": "RTX 4090",
+    "max_price": 0.5,
+    "disk_gb": 40,
+    "verified": true,     // optional, default true — only rent from vast.ai-verified hosts
+    "min_cpu_cores": 2    // optional, no floor if omitted
+  },
   "model": "qwen2.5-coder",
   "ollama_port": 11434
 }
 ```
+
+`vast.verified` filters to hosts vast.ai has verified (vs. individually-run
+machines with no platform reliability guarantee). `vast.min_cpu_cores` sets a
+floor on the *effective* (allocated) CPU cores for the instance — useful if a
+too-thin CPU slice bottlenecks model download/decompression.
 
 The vast.ai **API key is read from an environment variable / `.env`** — it is
 never stored in `config.json` and never committed.

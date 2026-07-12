@@ -49,6 +49,17 @@ class PickOfferTests(unittest.TestCase):
             pick_offer(client, make_config())
         self.assertIn("no rentable offer", str(cm.exception))
 
+    def test_passes_verified_and_min_cpu_cores_through(self):
+        client = MagicMock()
+        client.search_offers.return_value = [Offer(1, "RTX_4090", 0.3, 100)]
+        cfg = make_config(
+            vast=VastConfig(gpu="RTX_4090", max_price=0.5, disk_gb=40, verified=False, min_cpu_cores=4.0)
+        )
+        pick_offer(client, cfg)
+        client.search_offers.assert_called_once_with(
+            gpu_name="RTX_4090", max_price=0.5, min_disk_gb=40, verified=False, min_cpu_cores=4.0
+        )
+
 
 class ExtractHostPortTests(unittest.TestCase):
     def test_returns_host_and_port(self):
