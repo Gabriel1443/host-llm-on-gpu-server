@@ -70,7 +70,14 @@ class VastClient:
         return data
 
     def search_offers(
-        self, *, gpu_name: str, max_price: float, min_disk_gb: int, limit: int = 50
+        self,
+        *,
+        gpu_name: str,
+        max_price: float,
+        min_disk_gb: int,
+        verified: bool | None = None,
+        min_cpu_cores: float | None = None,
+        limit: int = 50,
     ) -> list[Offer]:
         """Search rentable on-demand offers matching the given filters, cheapest first."""
         body = {
@@ -82,6 +89,10 @@ class VastClient:
             "rentable": {"eq": True},
             "order": [["dph_total", "asc"]],
         }
+        if verified is not None:
+            body["verified"] = {"eq": verified}
+        if min_cpu_cores is not None:
+            body["cpu_cores_effective"] = {"gte": min_cpu_cores}
         data = self._request("POST", f"{BASE_URL}/bundles/", json=body)
         offers_raw = data.get("offers", [])
         return [

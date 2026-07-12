@@ -27,6 +27,9 @@ class ConfigError(Exception):
     """Raised when the config file or environment is missing/invalid."""
 
 
+DEFAULT_VERIFIED = True
+
+
 @dataclass(frozen=True)
 class VastConfig:
     """vast.ai offer-search filters."""
@@ -34,6 +37,8 @@ class VastConfig:
     gpu: str
     max_price: float
     disk_gb: int
+    verified: bool = DEFAULT_VERIFIED
+    min_cpu_cores: float | None = None
 
 
 @dataclass(frozen=True)
@@ -114,6 +119,18 @@ def load_config(
     if disk_gb <= 0:
         raise ConfigError("field 'vast.disk_gb' must be > 0")
 
+    if "verified" in vast_raw:
+        verified = _require(vast_raw, "verified", bool, where="vast.")
+    else:
+        verified = DEFAULT_VERIFIED
+
+    if "min_cpu_cores" in vast_raw:
+        min_cpu_cores = float(_require(vast_raw, "min_cpu_cores", (int, float), where="vast."))
+        if min_cpu_cores <= 0:
+            raise ConfigError("field 'vast.min_cpu_cores' must be > 0")
+    else:
+        min_cpu_cores = None
+
     # --- model --------------------------------------------------------------
     model = _require(raw, "model", str, where="").strip()
     if not model:
@@ -136,7 +153,13 @@ def load_config(
         )
 
     return Config(
-        vast=VastConfig(gpu=gpu, max_price=max_price, disk_gb=disk_gb),
+        vast=VastConfig(
+            gpu=gpu,
+            max_price=max_price,
+            disk_gb=disk_gb,
+            verified=verified,
+            min_cpu_cores=min_cpu_cores,
+        ),
         model=model,
         ollama_port=ollama_port,
         api_key=api_key,
@@ -152,6 +175,7 @@ if __name__ == "__main__":
     redacted = "set" if cfg.api_key else "missing"
     print(
         f"gpu={cfg.vast.gpu} max_price={cfg.vast.max_price} "
-        f"disk_gb={cfg.vast.disk_gb} model={cfg.model} "
+        f"disk_gb={cfg.vast.disk_gb} verified={cfg.vast.verified} "
+        f"min_cpu_cores={cfg.vast.min_cpu_cores} model={cfg.model} "
         f"ollama_port={cfg.ollama_port} api_key={redacted}"
     )

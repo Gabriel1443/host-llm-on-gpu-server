@@ -45,6 +45,19 @@ class SearchOffersTests(unittest.TestCase):
         sent_body = session.request.call_args.kwargs["json"]
         self.assertEqual(sent_body["gpu_name"], {"eq": "RTX_4090"})
         self.assertEqual(sent_body["dph_total"], {"lte": 0.5})
+        self.assertNotIn("verified", sent_body)
+        self.assertNotIn("cpu_cores_effective", sent_body)
+
+    def test_verified_and_min_cpu_cores_filters_included_when_given(self):
+        session = MagicMock()
+        session.request.return_value = fake_response({"offers": []})
+        client = VastClient("key", session=session)
+        client.search_offers(
+            gpu_name="RTX_4090", max_price=0.5, min_disk_gb=40, verified=True, min_cpu_cores=2.0
+        )
+        sent_body = session.request.call_args.kwargs["json"]
+        self.assertEqual(sent_body["verified"], {"eq": True})
+        self.assertEqual(sent_body["cpu_cores_effective"], {"gte": 2.0})
 
     def test_no_offers_returns_empty_list(self):
         session = MagicMock()

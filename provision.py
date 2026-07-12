@@ -37,11 +37,14 @@ def pick_offer(client: VastClient, cfg: Config):
         gpu_name=cfg.vast.gpu,
         max_price=cfg.vast.max_price,
         min_disk_gb=cfg.vast.disk_gb,
+        verified=cfg.vast.verified,
+        min_cpu_cores=cfg.vast.min_cpu_cores,
     )
     if not offers:
         raise ProvisionError(
             f"no rentable offer found for gpu={cfg.vast.gpu!r} "
             f"max_price={cfg.vast.max_price} disk_gb={cfg.vast.disk_gb} "
+            f"verified={cfg.vast.verified} min_cpu_cores={cfg.vast.min_cpu_cores} "
             f"(try raising max_price or lowering disk_gb)"
         )
     return offers[0]  # cheapest first (search_offers orders by dph_total asc)
