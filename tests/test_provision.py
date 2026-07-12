@@ -1,5 +1,6 @@
 """Tests for provision.py. Mocks VastClient — no network needed."""
 
+import shlex
 import sys
 import unittest
 from pathlib import Path
@@ -10,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import Config, VastConfig  # noqa: E402
 from provision import (  # noqa: E402
     ProvisionError,
+    build_onstart_script,
     extract_host_port,
     pick_offer,
     provision,
@@ -108,8 +110,36 @@ class WaitUntilRunningTests(unittest.TestCase):
             )
 
 
+class BuildOnstartScriptTests(unittest.TestCase):
+    def test_serves_waits_then_pulls_model(self):
+        script = build_onstart_script("qwen2.5-coder", 11434)
+        self.assertIn("ollama serve &", script)
+        self.assertIn("ollama pull qwen2.5-coder", script)
+        # pull must come after the wait-for-ready loop, not race against boot.
+        self.assertLess(script.index("until"), script.index("ollama pull"))
+        self.assertTrue(script.rstrip().endswith("wait"))
+
+    def test_shell_metacharacters_in_model_are_quoted(self):
+        script = build_onstart_script("model; rm -rf /", 11434)
+        self.assertIn(shlex.quote("model; rm -rf /"), script)
+        self.assertNotIn("pull model; rm -rf /;", script)
+
+    def test_cli_calls_target_localhost_not_bind_address(self):
+        # ollama serve must bind 0.0.0.0 (set via instance env), but the CLI
+        # calls it makes (list/pull) must target 127.0.0.1 explicitly, since
+        # dialing 0.0.0.0 as a client destination is invalid and would hang
+        # the readiness loop forever.
+        script = build_onstart_script("qwen2.5-coder", 11434)
+        self.assertIn("OLLAMA_HOST=127.0.0.1:11434 ollama list", script)
+        self.assertIn("OLLAMA_HOST=127.0.0.1:11434 ollama pull", script)
+
+    def test_uses_configured_port(self):
+        script = build_onstart_script("qwen2.5-coder", 22222)
+        self.assertIn("OLLAMA_HOST=127.0.0.1:22222", script)
+
+
 class ProvisionEndToEndTests(unittest.TestCase):
-    def test_starts_ollama_serve_via_onstart(self):
+    def test_onstart_includes_serve_and_pull_for_configured_model(self):
         client = MagicMock()
         client.search_offers.return_value = [Offer(1, "RTX_4090", 0.3, 100)]
         client.create_instance.return_value = 555
@@ -118,11 +148,12 @@ class ProvisionEndToEndTests(unittest.TestCase):
         )
 
         with patch("provision.VastClient", return_value=client):
-            provision(make_config(), timeout_seconds=5)
+            provision(make_config(model="qwen2.5-coder"), timeout_seconds=5)
 
         client.create_instance.assert_called_once()
-        kwargs = client.create_instance.call_args.kwargs
-        self.assertEqual(kwargs["onstart"], "ollama serve")
+        onstart = client.create_instance.call_args.kwargs["onstart"]
+        self.assertIn("ollama serve", onstart)
+        self.assertIn("ollama pull qwen2.5-coder", onstart)
 
 
 if __name__ == "__main__":

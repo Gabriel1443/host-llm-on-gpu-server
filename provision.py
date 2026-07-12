@@ -3,15 +3,16 @@
 Usage:
     uv run python provision.py [--config config.json] [--timeout 600]
 
-Reads config.json (see config.py) for GPU filters, disk size, and the Ollama
-port to expose. Renting is the only concern here: search offers -> create
-instance -> poll until running -> print instance id + reachable host:port.
-Installing Ollama and pulling the model happens in a later onstart step.
+Reads config.json (see config.py) for GPU filters, disk size, the Ollama
+port to expose, and which model to host: search offers -> create instance
+(onstart starts `ollama serve` and pulls the configured model) -> poll until
+running -> print instance id + reachable host:port.
 """
 
 from __future__ import annotations
 
 import argparse
+import shlex
 import sys
 import time
 
@@ -83,6 +84,31 @@ def extract_host_port(instance: Instance, container_port: int) -> tuple[str, int
     return host, int(host_port)
 
 
+def build_onstart_script(model: str, port: int) -> str:
+    """Shell script: start `ollama serve`, wait for it to be ready, pull `model`.
+
+    Runs serve in the background and polls the CLI until it responds, rather
+    than a fixed sleep, since boot/model-download time varies by instance.
+    `wait` at the end keeps the container alive on the serve process.
+
+    `ollama serve` needs OLLAMA_HOST=0.0.0.0:{port} (set in the instance env,
+    see vast_client.create_instance) to bind on all interfaces so the exposed
+    port is reachable. But the `ollama` CLI also reads OLLAMA_HOST to know
+    where to *connect*, and dialing 0.0.0.0 as a client target is invalid —
+    so the readiness check and pull below override it to 127.0.0.1 for
+    those two calls only. Without this the readiness loop never succeeds
+    and spins forever, leaving a billed instance running with no model.
+    """
+    quoted_model = shlex.quote(model)
+    local = f"OLLAMA_HOST=127.0.0.1:{port}"
+    return (
+        "ollama serve & "
+        f"until {local} ollama list >/dev/null 2>&1; do sleep 1; done; "
+        f"{local} ollama pull {quoted_model}; "
+        "wait"
+    )
+
+
 def provision(cfg: Config, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS) -> None:
     client = VastClient(cfg.api_key)
 
@@ -97,15 +123,16 @@ def provision(cfg: Config, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS) ->
         image=OLLAMA_IMAGE,
         disk_gb=cfg.vast.disk_gb,
         port=cfg.ollama_port,
-        onstart="ollama serve",
+        onstart=build_onstart_script(cfg.model, cfg.ollama_port),
     )
-    print(f"instance {instance_id} created, waiting for it to come up...")
+    print(f"instance {instance_id} created, waiting for Ollama to serve and pull {cfg.model!r}...")
 
     instance = wait_until_running(client, instance_id, cfg.ollama_port, timeout_seconds=timeout_seconds)
     host, host_port = extract_host_port(instance, cfg.ollama_port)
 
     print(f"instance {instance_id} is running")
     print(f"connect from local with: http://{host}:{host_port}")
+    print(f"note: {cfg.model!r} may still be downloading on the server after this returns")
 
 
 def main(argv: list[str] | None = None) -> int:
