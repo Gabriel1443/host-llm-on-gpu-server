@@ -3,7 +3,7 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -12,6 +12,7 @@ from provision import (  # noqa: E402
     ProvisionError,
     extract_host_port,
     pick_offer,
+    provision,
     wait_until_running,
 )
 from vast_client import Instance, Offer  # noqa: E402
@@ -105,6 +106,23 @@ class WaitUntilRunningTests(unittest.TestCase):
             wait_until_running(
                 client, 1, 11434, timeout_seconds=10, poll_interval=1, sleep=lambda s: None
             )
+
+
+class ProvisionEndToEndTests(unittest.TestCase):
+    def test_starts_ollama_serve_via_onstart(self):
+        client = MagicMock()
+        client.search_offers.return_value = [Offer(1, "RTX_4090", 0.3, 100)]
+        client.create_instance.return_value = 555
+        client.get_instance.return_value = Instance(
+            555, "running", {"11434/tcp": [{"HostIp": "0.0.0.0", "HostPort": "1"}]}, "1.2.3.4"
+        )
+
+        with patch("provision.VastClient", return_value=client):
+            provision(make_config(), timeout_seconds=5)
+
+        client.create_instance.assert_called_once()
+        kwargs = client.create_instance.call_args.kwargs
+        self.assertEqual(kwargs["onstart"], "ollama serve")
 
 
 if __name__ == "__main__":

@@ -60,7 +60,7 @@ class CreateInstanceTests(unittest.TestCase):
         client = VastClient("key", session=session)
 
         instance_id = client.create_instance(
-            42, image="ollama/ollama:latest", disk_gb=40, port=11434
+            42, image="ollama/ollama:latest", disk_gb=40, port=11434, onstart="ollama serve"
         )
 
         self.assertEqual(instance_id, 555)
@@ -69,7 +69,16 @@ class CreateInstanceTests(unittest.TestCase):
         self.assertIn("/asks/42/", url)
         body = session.request.call_args.kwargs["json"]
         self.assertEqual(body["image"], "ollama/ollama:latest")
-        self.assertEqual(body["env"], "-p 11434:11434")
+        self.assertEqual(body["env"], "-e OLLAMA_HOST=0.0.0.0:11434 -p 11434:11434")
+        self.assertEqual(body["onstart"], "ollama serve")
+
+    def test_onstart_omitted_when_not_given(self):
+        session = MagicMock()
+        session.request.return_value = fake_response({"success": True, "new_contract": 1})
+        client = VastClient("key", session=session)
+        client.create_instance(1, image="img", disk_gb=1, port=1)
+        body = session.request.call_args.kwargs["json"]
+        self.assertNotIn("onstart", body)
 
     def test_missing_new_contract_raises(self):
         session = MagicMock()

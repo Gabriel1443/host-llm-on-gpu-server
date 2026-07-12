@@ -93,7 +93,11 @@ def provision(cfg: Config, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS) ->
     )
 
     instance_id = client.create_instance(
-        offer.id, image=OLLAMA_IMAGE, disk_gb=cfg.vast.disk_gb, port=cfg.ollama_port
+        offer.id,
+        image=OLLAMA_IMAGE,
+        disk_gb=cfg.vast.disk_gb,
+        port=cfg.ollama_port,
+        onstart="ollama serve",
     )
     print(f"instance {instance_id} created, waiting for it to come up...")
 

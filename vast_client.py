@@ -97,11 +97,16 @@ class VastClient:
     def create_instance(
         self, offer_id: int, *, image: str, disk_gb: int, port: int, onstart: str = ""
     ) -> int:
-        """Rent the given offer. Returns the new instance (contract) id."""
+        """Rent the given offer. Returns the new instance (contract) id.
+
+        runtype "ssh" skips the image's default entrypoint/CMD, so anything
+        the image would normally run on start (e.g. `ollama serve`) must be
+        passed explicitly via `onstart`.
+        """
         body = {
             "image": image,
             "disk": disk_gb,
-            "env": f"-p {port}:{port}",
+            "env": f"-e OLLAMA_HOST=0.0.0.0:{port} -p {port}:{port}",
             "runtype": "ssh",
         }
         if onstart:
