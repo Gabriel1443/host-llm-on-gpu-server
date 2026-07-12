@@ -22,6 +22,9 @@ models/
 # Local config (use config.json.example as the template)
 config.json
 
+# Local state (tracks the currently-rented vast.ai instance)
+.vast_state.json
+
 # Logs & caches
 *.log
 .cache/

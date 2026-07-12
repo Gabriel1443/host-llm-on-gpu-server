@@ -139,21 +139,29 @@ class BuildOnstartScriptTests(unittest.TestCase):
 
 
 class ProvisionEndToEndTests(unittest.TestCase):
-    def test_onstart_includes_serve_and_pull_for_configured_model(self):
+    def _run(self, **config_overrides):
         client = MagicMock()
         client.search_offers.return_value = [Offer(1, "RTX_4090", 0.3, 100)]
         client.create_instance.return_value = 555
         client.get_instance.return_value = Instance(
             555, "running", {"11434/tcp": [{"HostIp": "0.0.0.0", "HostPort": "1"}]}, "1.2.3.4"
         )
+        with patch("provision.VastClient", return_value=client), patch("provision.state.save") as mock_save:
+            provision(make_config(**config_overrides), timeout_seconds=5)
+        return client, mock_save
 
-        with patch("provision.VastClient", return_value=client):
-            provision(make_config(model="qwen2.5-coder"), timeout_seconds=5)
-
+    def test_onstart_includes_serve_and_pull_for_configured_model(self):
+        client, _ = self._run(model="qwen2.5-coder")
         client.create_instance.assert_called_once()
         onstart = client.create_instance.call_args.kwargs["onstart"]
         self.assertIn("ollama serve", onstart)
         self.assertIn("ollama pull qwen2.5-coder", onstart)
+
+    def test_saves_instance_state_for_teardown(self):
+        _, mock_save = self._run()
+        mock_save.assert_called_once()
+        saved = mock_save.call_args.args[0]
+        self.assertEqual((saved.instance_id, saved.host, saved.port), (555, "1.2.3.4", 1))
 
 
 if __name__ == "__main__":

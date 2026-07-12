@@ -16,6 +16,7 @@ import shlex
 import sys
 import time
 
+import state
 from config import Config, ConfigError, load_config
 from vast_client import Instance, VastAPIError, VastClient
 
@@ -130,9 +131,12 @@ def provision(cfg: Config, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS) ->
     instance = wait_until_running(client, instance_id, cfg.ollama_port, timeout_seconds=timeout_seconds)
     host, host_port = extract_host_port(instance, cfg.ollama_port)
 
+    state.save(state.InstanceState(instance_id=instance_id, host=host, port=host_port))
+
     print(f"instance {instance_id} is running")
     print(f"connect from local with: http://{host}:{host_port}")
     print(f"note: {cfg.model!r} may still be downloading on the server after this returns")
+    print("remember to run teardown.py when you're done — rented GPUs bill hourly")
 
 
 def main(argv: list[str] | None = None) -> int:
