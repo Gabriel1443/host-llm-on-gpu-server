@@ -113,11 +113,19 @@ class VastClient:
         runtype "ssh" skips the image's default entrypoint/CMD, so anything
         the image would normally run on start (e.g. `ollama serve`) must be
         passed explicitly via `onstart`.
+
+        The instance-creation endpoint takes `env` as a dict (unlike the
+        template-creation endpoint, which takes a Docker-flag string) —
+        regular vars as key/value pairs, port mappings as "-p H:C" keys
+        mapped to "1".
         """
         body = {
             "image": image,
             "disk": disk_gb,
-            "env": f"-e OLLAMA_HOST=0.0.0.0:{port} -p {port}:{port}",
+            "env": {
+                "OLLAMA_HOST": f"0.0.0.0:{port}",
+                f"-p {port}:{port}": "1",
+            },
             "runtype": "ssh",
         }
         if onstart:

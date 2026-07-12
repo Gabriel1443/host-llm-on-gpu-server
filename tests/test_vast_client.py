@@ -82,7 +82,9 @@ class CreateInstanceTests(unittest.TestCase):
         self.assertIn("/asks/42/", url)
         body = session.request.call_args.kwargs["json"]
         self.assertEqual(body["image"], "ollama/ollama:latest")
-        self.assertEqual(body["env"], "-e OLLAMA_HOST=0.0.0.0:11434 -p 11434:11434")
+        self.assertEqual(
+            body["env"], {"OLLAMA_HOST": "0.0.0.0:11434", "-p 11434:11434": "1"}
+        )
         self.assertEqual(body["onstart"], "ollama serve")
 
     def test_onstart_omitted_when_not_given(self):
