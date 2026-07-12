@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -112,6 +113,19 @@ class LoadConfigTests(unittest.TestCase):
         data = dict(VALID, api_key="should-be-ignored")
         cfg = load_config(self._write(data), env=ENV)
         self.assertEqual(cfg.api_key, "test-key")
+
+    @patch("config.load_dotenv")
+    def test_dotenv_loaded_when_env_not_overridden(self, mock_load_dotenv):
+        # Simulate .env populating os.environ before we read it.
+        with patch.dict(os.environ, {"VAST_API_KEY": "from-dotenv"}, clear=False):
+            cfg = load_config(self._write(VALID))
+        mock_load_dotenv.assert_called_once()
+        self.assertEqual(cfg.api_key, "from-dotenv")
+
+    @patch("config.load_dotenv")
+    def test_dotenv_not_consulted_when_env_explicitly_given(self, mock_load_dotenv):
+        load_config(self._write(VALID), env=ENV)
+        mock_load_dotenv.assert_not_called()
 
     def test_missing_required_field(self):
         data = {k: v for k, v in VALID.items() if k != "model"}

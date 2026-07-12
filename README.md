@@ -37,8 +37,9 @@ machines with no platform reliability guarantee). `vast.min_cpu_cores` sets a
 floor on the *effective* (allocated) CPU cores for the instance — useful if a
 too-thin CPU slice bottlenecks model download/decompression.
 
-The vast.ai **API key is read from an environment variable / `.env`** — it is
-never stored in `config.json` and never committed.
+The vast.ai **API key is read from a `.env` file (loaded automatically) or an
+environment variable** — it is never stored in `config.json` and never
+committed.
 
 ## Setup
 
@@ -48,8 +49,11 @@ This project uses **[uv](https://docs.astral.dev/uv/)** for Python.
 uv sync                              # create .venv (Python >=3.11)
 cp config.json.example config.json   # then edit
 cp .env.example .env                 # then add your VAST_API_KEY
-set -a; source .env; set +a          # or export VAST_API_KEY=...
 ```
+
+That's it — every script loads `.env` itself (via `python-dotenv`), so
+there's no need to `source` or `export` it. An already-exported
+`VAST_API_KEY` in your shell takes precedence over `.env` if both are set.
 
 `.env` uses plain `VAR=value` lines (no `export`), so a bare `source .env`
 only sets the variable in your current shell — it won't be visible to the
