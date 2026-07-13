@@ -86,9 +86,17 @@ uv run python connect.py
 
 Finds the sole running vast.ai instance with the configured port mapped (or
 use `--instance-id` if you have more than one), then checks `GET /api/tags`
-(lists models) and `POST /api/generate` (asks the model to respond). Re-run
-this if you provisioned recently and want to confirm the model finished
-downloading.
+(lists models) and `POST /api/generate` (asks the model to respond).
+
+If you just provisioned, the model may still be downloading — instead of
+manually re-running this, use `--watch` to poll until it's ready:
+
+```bash
+uv run python connect.py --watch                      # polls every 30s
+uv run python connect.py --watch --poll-interval 10    # or a custom interval
+```
+
+Gives up with a clear error after `--watch-timeout` seconds (default 900).
 
 ### 3. Destroy the instance when done
 
