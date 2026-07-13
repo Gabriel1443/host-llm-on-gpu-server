@@ -15,6 +15,7 @@ from connect import (  # noqa: E402
     model_is_pulled,
     resolve_target,
     run_check,
+    wait_for_model,
 )
 from vast_client import Instance  # noqa: E402
 
@@ -112,6 +113,48 @@ class CheckTagsTests(unittest.TestCase):
             check_tags("1.2.3.4", 11434)
 
 
+class WaitForModelTests(unittest.TestCase):
+    @patch("connect.check_tags")
+    def test_returns_once_model_appears(self, mock_check_tags):
+        mock_check_tags.side_effect = [[], ["qwen2.5-coder:latest"]]
+        fake_time = [0.0]
+        models = wait_for_model(
+            "1.2.3.4",
+            11434,
+            "qwen2.5-coder",
+            timeout_seconds=60,
+            poll_interval=30,
+            sleep=lambda s: fake_time.__setitem__(0, fake_time[0] + s),
+            now=lambda: fake_time[0],
+        )
+        self.assertEqual(models, ["qwen2.5-coder:latest"])
+        self.assertEqual(mock_check_tags.call_count, 2)
+
+    @patch("connect.check_tags")
+    def test_returns_immediately_if_already_present(self, mock_check_tags):
+        mock_check_tags.return_value = ["qwen2.5-coder:latest"]
+        models = wait_for_model(
+            "1.2.3.4", 11434, "qwen2.5-coder", sleep=lambda s: self.fail("should not sleep")
+        )
+        self.assertEqual(models, ["qwen2.5-coder:latest"])
+
+    @patch("connect.check_tags")
+    def test_times_out_with_clear_error(self, mock_check_tags):
+        mock_check_tags.return_value = []
+        fake_time = [0.0]
+        with self.assertRaises(ConnectError) as cm:
+            wait_for_model(
+                "1.2.3.4",
+                11434,
+                "qwen2.5-coder",
+                timeout_seconds=10,
+                poll_interval=3,
+                sleep=lambda s: fake_time.__setitem__(0, fake_time[0] + s),
+                now=lambda: fake_time[0],
+            )
+        self.assertIn("did not appear within 10s", str(cm.exception))
+
+
 class CheckGenerateTests(unittest.TestCase):
     @patch("connect.requests.post")
     def test_returns_response_text(self, mock_post):
@@ -168,6 +211,34 @@ class RunCheckTests(unittest.TestCase):
             run_check(make_config(), instance_id=None, host="5.5.5.5", port=9999)
         warnings = [c for c in mock_print.call_args_list if "not in server's model list" in str(c)]
         self.assertEqual(warnings, [])
+
+    @patch("connect.check_generate")
+    @patch("connect.wait_for_model")
+    def test_watch_uses_wait_for_model_instead_of_single_check(self, mock_wait, mock_generate):
+        mock_wait.return_value = ["qwen2.5-coder:latest"]
+        mock_generate.return_value = "OK"
+        run_check(
+            make_config(),
+            instance_id=None,
+            host="5.5.5.5",
+            port=9999,
+            watch=True,
+            poll_interval=5,
+            watch_timeout=20,
+        )
+        mock_wait.assert_called_once_with(
+            "5.5.5.5", 9999, "qwen2.5-coder", poll_interval=5, timeout_seconds=20
+        )
+
+    @patch("connect.check_generate")
+    @patch("connect.check_tags")
+    def test_default_behavior_unchanged_without_watch(self, mock_tags, mock_generate):
+        mock_tags.return_value = ["qwen2.5-coder:latest"]
+        mock_generate.return_value = "OK"
+        with patch("connect.wait_for_model") as mock_wait:
+            run_check(make_config(), instance_id=None, host="5.5.5.5", port=9999)
+            mock_wait.assert_not_called()
+        mock_tags.assert_called_once_with("5.5.5.5", 9999)
 
 
 if __name__ == "__main__":

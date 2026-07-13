@@ -3,16 +3,23 @@
 Usage:
     uv run python connect.py [--config config.json] [--instance-id ID]
                               [--host HOST --port PORT] [--prompt "hi"]
+                              [--watch [--poll-interval 30] [--watch-timeout 900]]
 
 Resolves the instance's public host:port (from vast.ai, or given directly
 via --host/--port) and checks it two ways: GET /api/tags (lists models) and
 a small POST /api/generate against the configured model.
+
+Right after provision.py rents an instance, the model is often still
+downloading. Pass --watch to poll GET /api/tags every --poll-interval
+seconds until the configured model appears, then run the full check —
+instead of failing immediately and needing a manual re-run.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import time
 
 import requests
 
@@ -23,6 +30,8 @@ from vast_client import VastAPIError, VastClient
 REQUEST_TIMEOUT_SECONDS = 10
 GENERATE_TIMEOUT_SECONDS = 120
 DEFAULT_PROMPT = "Say OK."
+DEFAULT_POLL_INTERVAL_SECONDS = 30
+DEFAULT_WATCH_TIMEOUT_SECONDS = 900
 
 
 class ConnectError(Exception):
@@ -86,6 +95,31 @@ def check_tags(host: str, port: int, *, timeout: int = REQUEST_TIMEOUT_SECONDS) 
     return [m.get("name", "?") for m in data.get("models", [])]
 
 
+def wait_for_model(
+    host: str,
+    port: int,
+    model: str,
+    *,
+    poll_interval: int = DEFAULT_POLL_INTERVAL_SECONDS,
+    timeout_seconds: int = DEFAULT_WATCH_TIMEOUT_SECONDS,
+    sleep=time.sleep,
+    now=time.monotonic,
+) -> list[str]:
+    """Poll GET /api/tags until `model` appears, or raise on timeout."""
+    deadline = now() + timeout_seconds
+    while True:
+        models = check_tags(host, port)
+        if model_is_pulled(model, models):
+            return models
+        if now() >= deadline:
+            raise ConnectError(
+                f"model {model!r} did not appear within {timeout_seconds}s "
+                f"(last models on server: {models or '(none)'})"
+            )
+        print(f"model {model!r} not ready yet, rechecking in {poll_interval}s...")
+        sleep(poll_interval)
+
+
 def check_generate(
     host: str, port: int, model: str, prompt: str, *, timeout: int = GENERATE_TIMEOUT_SECONDS
 ) -> str:
@@ -110,6 +144,9 @@ def run_check(
     host: str | None,
     port: int | None,
     prompt: str = DEFAULT_PROMPT,
+    watch: bool = False,
+    poll_interval: int = DEFAULT_POLL_INTERVAL_SECONDS,
+    watch_timeout: int = DEFAULT_WATCH_TIMEOUT_SECONDS,
 ) -> None:
     if host is not None:
         target_port = port or cfg.ollama_port
@@ -121,11 +158,20 @@ def run_check(
     target_host, target_port = target
     print(f"checking http://{target_host}:{target_port} ...")
 
-    models = check_tags(target_host, target_port)
-    print(f"/api/tags ok — models on server: {models or '(none pulled yet)'}")
-
-    if not model_is_pulled(cfg.model, models):
-        print(f"warning: configured model {cfg.model!r} not in server's model list yet")
+    if watch:
+        models = wait_for_model(
+            target_host,
+            target_port,
+            cfg.model,
+            poll_interval=poll_interval,
+            timeout_seconds=watch_timeout,
+        )
+        print(f"/api/tags ok — models on server: {models}")
+    else:
+        models = check_tags(target_host, target_port)
+        print(f"/api/tags ok — models on server: {models or '(none pulled yet)'}")
+        if not model_is_pulled(cfg.model, models):
+            print(f"warning: configured model {cfg.model!r} not in server's model list yet")
 
     response = check_generate(target_host, target_port, cfg.model, prompt)
     print(f"/api/generate ok — response: {response.strip()[:200]!r}")
@@ -138,6 +184,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default=None, help="skip vast.ai lookup, connect here directly")
     parser.add_argument("--port", type=int, default=None, help="port to use with --host")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="prompt to send to /api/generate")
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="poll until the configured model is pulled, instead of checking once",
+    )
+    parser.add_argument(
+        "--poll-interval",
+        type=int,
+        default=DEFAULT_POLL_INTERVAL_SECONDS,
+        help="seconds between polls in --watch mode",
+    )
+    parser.add_argument(
+        "--watch-timeout",
+        type=int,
+        default=DEFAULT_WATCH_TIMEOUT_SECONDS,
+        help="give up --watch mode after this many seconds",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -148,6 +211,9 @@ def main(argv: list[str] | None = None) -> int:
             host=args.host,
             port=args.port,
             prompt=args.prompt,
+            watch=args.watch,
+            poll_interval=args.poll_interval,
+            watch_timeout=args.watch_timeout,
         )
     except (ConfigError, ConnectError, VastAPIError) as exc:
         print(f"error: {exc}", file=sys.stderr)
